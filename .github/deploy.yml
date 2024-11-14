@@ -1,0 +1,74 @@
+name: Database Management
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'schema/**'
+      - 'scripts/**'
+      - 'migrations/**'
+
+jobs:
+  deploy-db-scripts:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Deploy Database Scripts
+      env:
+        PRIVATE_KEY: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+        VM_USER: ${{ secrets.VM_USER }}
+        VM_IP: ${{ secrets.VM_IP }}
+      run: |
+        # Setup SSH
+        mkdir -p ~/.ssh
+        echo "$PRIVATE_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan $VM_IP >> ~/.ssh/known_hosts
+        
+        # Create required directories on VM if they don't exist
+        ssh -i ~/.ssh/id_rsa $VM_USER@$VM_IP '
+          sudo mkdir -p /etc/grabbiel/db-scripts
+          sudo mkdir -p /var/lib/grabbiel-db
+          sudo mkdir -p /var/backups/grabbiel-db
+          sudo chown -R $USER:$USER /etc/grabbiel
+          sudo chown -R $USER:$USER /var/lib/grabbiel-db
+          sudo chown -R $USER:$USER /var/backups/grabbiel-db
+        '
+        
+        # Before updating scripts, make a backup if database exists
+        ssh -i ~/.ssh/id_rsa $VM_USER@$VM_IP '
+          if [ -f "/var/lib/grabbiel-db/content.db" ]; then
+            timestamp=$(date +%Y%m%d_%H%M%S)
+            echo "Creating backup before script update..."
+            sqlite3 "/var/lib/grabbiel-db/content.db" ".backup /var/backups/grabbiel-db/pre_update_${timestamp}.db"
+          fi
+        '
+        
+        # Copy schema and scripts
+        scp -i ~/.ssh/id_rsa schema/init_db.sql $VM_USER@$VM_IP:/etc/grabbiel/db-scripts/
+        scp -i ~/.ssh/id_rsa scripts/* $VM_USER@$VM_IP:/etc/grabbiel/db-scripts/
+        
+        # Update scripts and handle database appropriately
+        ssh -i ~/.ssh/id_rsa $VM_USER@$VM_IP '
+          # Set executable permissions
+          chmod +x /etc/grabbiel/db-scripts/*.sh
+          
+          if [ ! -f "/var/lib/grabbiel-db/content.db" ]; then
+            echo "No database found. Running initial setup..."
+            /etc/grabbiel/db-scripts/setup_db.sh
+          else
+            echo "Database exists. Checking for and applying any schema updates..."
+            # Run migration script if it exists
+            if [ -f "/etc/grabbiel/db-scripts/migrate_db.sh" ]; then
+              /etc/grabbiel/db-scripts/migrate_db.sh
+            fi
+          fi
+          
+          # Run status check after changes
+          if [ -f "/etc/grabbiel/db-scripts/check_db_status.sh" ]; then
+            echo "Running database status check..."
+            /etc/grabbiel/db-scripts/check_db_status.sh
+          fi
+        '

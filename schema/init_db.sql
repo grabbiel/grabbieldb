@@ -47,3 +47,6 @@ CREATE TABLE IF NOT EXISTS schema_versions (
 --- Insert initial version
 INSERT OR IGNORE INTO schema_versions (version, description)
 VALUES(1, 'Initial schema');
+
+
+-- testing changes

@@ -5,6 +5,18 @@ DB_PATH="/var/lib/grabbiel-db/content.db"
 echo "Database Status Check"
 echo "===================="
 
+# Check if database exists
+if [ ! -f "$DB_PATH" ]; then
+  echo "Error: Database file does not exist at $DB_PATH"
+  exit 1
+fi
+
+# Check if database is accessible
+if ! sqlite3 "$DB_PATH" "SELECT sqlite_version();" >/dev/null 2>&1; then
+  echo "Error: Cannot connect to database at $DB_PATH"
+  exit 1
+fi
+
 # Check database size
 size=$(ls -lh "$DB_PATH" | awk '{print $5}')
 echo "Database size: $size"

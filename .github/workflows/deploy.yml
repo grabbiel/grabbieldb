@@ -63,10 +63,10 @@ jobs:
          
           # Check if database has any tables
           TABLES=$(sqlite3 "$DB_PATH" ".tables")
-          if [-z "$TABLES"]; then
+          if [ -z "$TABLES" ]; then
             echo "Empty or new database detected. Initializing schema..."
             sqlite3 "$DB_PATH" < "$SCHEMA_PATH"
-            if [$? -eq 0]; then
+            if [ $? -eq 0 ]; then
               echo "Schema initialization successful"
             else 
               echo "Schema initialization failed"

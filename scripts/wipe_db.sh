@@ -3,7 +3,7 @@
 # Exit on any error
 set -e
 
-# Configuration
+# Configuration variables
 DB_PATH="/var/lib/grabbiel-db/content.db"
 BACKUP_DIR="/var/backups/grabbiel-db"
 SCRIPTS_DIR="/etc/grabbiel/db-scripts"

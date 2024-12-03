@@ -19,8 +19,8 @@ sqlite3 "$DB_PATH" "
 SELECT 
     'Articles' as table_name, 
     COUNT(*) as total,
-    SUM(CASE WHEN published = 1 THEN 1 ELSE 0 END) as published
-FROM articles;
+    SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) as published
+FROM content_blocks;
 "
 
 # Check disk space

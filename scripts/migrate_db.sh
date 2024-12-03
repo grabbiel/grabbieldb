@@ -3,7 +3,7 @@
 DB_PATH="/var/lib/grabbiel-db/content.db"
 MIGRATIONS_DIR="/etc/grabbiel/db-scripts/migrations"
 
-# Get current schema version
+# Get current schema version (hopeful?)
 current_version=$(sqlite3 "$DB_PATH" "SELECT MAX(version) FROM schema_versions;")
 
 # Find and apply new migrations

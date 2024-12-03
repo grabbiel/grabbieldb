@@ -52,12 +52,26 @@ jobs:
         
         # Update scripts and handle database appropriately
         ssh -i ~/.ssh/id_rsa $VM_USER@$VM_IP '
+          
+          DB_PATH="/var/lib/grabbiel-db/content.db"
+          SCHEMA_PATH="/etc/grabbiel/db-scripts/init_db.sql"
+        
+          touch "$DB_PATH"
+
           # Set executable permissions
           chmod +x /etc/grabbiel/db-scripts/*.sh
-          
-          if [ ! -f "/var/lib/grabbiel-db/content.db" ]; then
-            echo "No database found. Running initial setup..."
-            /etc/grabbiel/db-scripts/setup_db.sh
+         
+          # Check if database has any tables
+          TABLES=$(sqlite3 "$DB_PATH" ".tables")
+          if [-z "$TABLES"]; then
+            echo "Empty or new database detected. Initializing schema..."
+            sqlite3 "$DB_PATH" < "$SCHEMA_PATH"
+            if [$? -eq 0]; then
+              echo "Schema initialization successful"
+            else 
+              echo "Schema initialization failed"
+              exit 1
+            fi
           else
             echo "Database exists. Checking for and applying any schema updates..."
             # Run migration script if it exists
@@ -65,6 +79,8 @@ jobs:
               /etc/grabbiel/db-scripts/migrate_db.sh
             fi
           fi
+
+          chmod 644 "$DB_PATH"
           
           # Run status check after changes
           if [ -f "/etc/grabbiel/db-scripts/check_db_status.sh" ]; then

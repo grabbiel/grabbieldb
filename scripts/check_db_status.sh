@@ -16,11 +16,26 @@ echo "Schema version: $version"
 # Check table counts
 echo -e "\nTable Statistics:"
 sqlite3 "$DB_PATH" "
-SELECT 
-    'Articles' as table_name, 
+SELECT 'Content Blocks' as table_name,
     COUNT(*) as total,
-    SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) as published
+    SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) as published,
+    SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as drafts
 FROM content_blocks;
+
+SELECT 'Images' as table_name,
+    COUNT(*) as total,
+    SUM(CASE WHEN processing_status = 'complete' THEN 1 ELSE 0 END) as processed
+FROM images;
+
+SELECT 'Videos' as table_name,
+    COUNT(*) as total,
+    SUM(CASE WHEN processing_status = 'complete' THEN 1 ELSE 0 END) as processed
+FROM videos;
+
+SELECT 'Content Files' as table_name,
+    COUNT(*) as total,
+    COUNT(DISTINCT content_id) as unique_content_blocks
+FROM content_files;
 "
 
 # Check disk space

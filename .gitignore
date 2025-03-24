@@ -47,3 +47,6 @@
 # Neovim LSP
 .clangd
 compile_commands.json
+
+# Others
+connect

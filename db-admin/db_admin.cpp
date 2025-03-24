@@ -29,7 +29,6 @@ struct Table {
     std::vector<Column> columns;
 };
 
-// Get list of tables in the database
 std::vector<std::string> get_tables(sqlite3* db) {
     std::vector<std::string> tables;
     sqlite3_stmt *stmt;

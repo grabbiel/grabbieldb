@@ -20,6 +20,21 @@ jobs:
         PRIVATE_KEY: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
         VM_USER: ${{ secrets.VM_USER }}
         VM_IP: ${{ secrets.VM_IP }}
+        SERVICE_FILE: |
+          [Unit]
+          Description=SQLite Database Admin Interface
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/local/bin/db_admin
+          WorkingDirectory=/usr/local/bin
+          Restart=always
+          RestartSec=5s
+          User=root
+          Group=root
+
+          [Install]
+          WantedBy=multi-user.target
       run: |
         # Setup SSH
         mkdir -p ~/.ssh
@@ -37,36 +52,18 @@ jobs:
         scp -i ~/.ssh/id_rsa db-admin/db_admin.cpp $VM_USER@$VM_IP:/tmp/
         scp -i ~/.ssh/id_rsa db-admin/build_db_admin.sh $VM_USER@$VM_IP:/tmp/
         
+        # Create service file locally and copy it
+        echo "$SERVICE_FILE" > /tmp/db-admin.service
+        scp -i ~/.ssh/id_rsa /tmp/db-admin.service $VM_USER@$VM_IP:/tmp/
+        
         # Compile and install on VM
         ssh -i ~/.ssh/id_rsa $VM_USER@$VM_IP '
           # Install required dependencies
           sudo apt-get update
           sudo apt-get install -y g++ libsqlite3-dev
           
-          # Compile and install
-          cd /tmp
-          chmod +x build_db_admin.sh
-          sudo ./build_db_admin.sh
-          
-          # Create service file if it doesn't exist
-          if [ ! -f "/etc/systemd/system/db-admin.service" ]; then
-            sudo tee /etc/systemd/system/db-admin.service > /dev/null << EOF
-[Unit]
-Description=SQLite Database Admin Interface
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/db_admin
-WorkingDirectory=/usr/local/bin
-Restart=always
-RestartSec=5s
-User=root
-Group=root
-
-[Install]
-WantedBy=multi-user.target
-EOF
-          fi
+          # Move service file to system directory
+          sudo mv /tmp/db-admin.service /etc/systemd/system/
           
           # Compile the application
           sudo g++ -std=c++17 -o /usr/local/bin/db_admin /tmp/db_admin.cpp -lsqlite3

@@ -19,13 +19,11 @@
 #define BUFFER_SIZE 16384
 #define DB_PATH "/var/lib/grabbiel-db/content.db"
 
-// Structure to represent a database table column
 struct Column {
     std::string name;
     std::string type;
 };
 
-// Structure to represent a table
 struct Table {
     std::string name;
     std::vector<Column> columns;

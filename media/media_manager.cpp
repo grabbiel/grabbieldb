@@ -20,7 +20,6 @@
 #define DB_PATH "/var/lib/grabbiel-db/content.db"
 #define TEMP_UPLOAD_DIR "/tmp/grabbiel-uploads"
 
-// Structure to represent an image
 struct Image {
   int id;
   std::string original_url;
@@ -34,7 +33,6 @@ struct Image {
   std::string processing_status;
 };
 
-// Structure to represent a video
 struct Video {
   int id;
   std::string title;

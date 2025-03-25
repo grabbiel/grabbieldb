@@ -1,0 +1,84 @@
+name: Deploy Media Manager
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'media-manager/**'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  deploy-media-manager:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Deploy Media Manager
+      env:
+        PRIVATE_KEY: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+        VM_USER: ${{ secrets.VM_USER }}
+        VM_IP: ${{ secrets.VM_IP }}
+        SERVICE_FILE: |
+          [Unit]
+          Description=Media Manager Web Interface
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/local/bin/media_manager
+          WorkingDirectory=/usr/local/bin
+          Restart=always
+          RestartSec=5s
+          User=root
+          Group=root
+
+          [Install]
+          WantedBy=multi-user.target
+      run: |
+        # Setup SSH
+        mkdir -p ~/.ssh
+        echo "$PRIVATE_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan $VM_IP >> ~/.ssh/known_hosts
+        
+        # Create required directories on VM
+        ssh -i ~/.ssh/id_rsa $VM_USER@$VM_IP '
+          sudo mkdir -p /usr/local/bin
+          sudo mkdir -p /tmp/grabbiel-uploads
+          sudo chmod 777 /tmp/grabbiel-uploads
+        '
+        
+        # Copy files to VM
+        scp -i ~/.ssh/id_rsa media-manager/media_manager.cpp $VM_USER@$VM_IP:/tmp/
+        scp -i ~/.ssh/id_rsa media-manager/build_media_manager.sh $VM_USER@$VM_IP:/tmp/
+        
+        # Create service file
+        echo "$SERVICE_FILE" > /tmp/media-manager.service
+        scp -i ~/.ssh/id_rsa /tmp/media-manager.service $VM_USER@$VM_IP:/tmp/
+        
+        # Compile and install
+        ssh -i ~/.ssh/id_rsa $VM_USER@$VM_IP '
+          # Install dependencies
+          sudo apt-get update
+          sudo apt-get install -y g++ libsqlite3-dev
+          
+          # Move service file
+          sudo mv /tmp/media-manager.service /etc/systemd/system/
+          
+          # Compile the application
+          cd /tmp
+          sudo g++ -std=c++17 -o media_manager media_manager.cpp -lsqlite3
+          
+          # Install and configure
+          sudo mv media_manager /usr/local/bin/
+          sudo chmod +x /usr/local/bin/media_manager
+          
+          # Reload systemd and restart service
+          sudo systemctl daemon-reload
+          sudo systemctl enable media-manager
+          sudo systemctl restart media-manager
+          
+          # Verify service is running
+          sudo systemctl status media-manager --no-pager
+        '

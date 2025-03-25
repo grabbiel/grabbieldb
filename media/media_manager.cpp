@@ -1,10 +1,12 @@
 #include <arpa/inet.h>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <netinet/in.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
@@ -217,19 +219,19 @@ bool save_file(const std::vector<char> &file_data,
 
 // Execute a shell command and get output
 std::string exec_command(const std::string &cmd) {
-  std::array<char, 128> buffer;
   std::string result;
-  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"),
-                                                pclose);
+  char buffer[128];
+  FILE *pipe = popen(cmd.c_str(), "r");
 
   if (!pipe) {
     return "Error executing command";
   }
 
-  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-    result += buffer.data();
+  while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+    result += buffer;
   }
 
+  pclose(pipe);
   return result;
 }
 

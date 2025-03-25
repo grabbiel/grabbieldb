@@ -198,7 +198,6 @@ std::vector<Video> get_videos(sqlite3 *db, int limit = 20) {
   return videos;
 }
 
-// Save uploaded file to disk
 bool save_file(const std::vector<char> &file_data,
                const std::string &filename) {
   // Create upload directory if it doesn't exist

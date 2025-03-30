@@ -2,8 +2,8 @@
 # media-manager-connect.sh
 
 SSH_KEY=~/.ssh/github_actions_deploy
-VM_USER=${VM_USER:-fcruzado22}
-VM_IP=${VM_IP:-35.197.15.118}
+VM_USER=${VM_USER}
+VM_IP=${VM_IP}
 LOCAL_PORT=8889
 REMOTE_PORT=8889
 

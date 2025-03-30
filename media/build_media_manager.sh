@@ -14,6 +14,7 @@ Description=Media Manager Web Interface
 After=network.target
 
 [Service]
+Environment="GOOGLE_APPLICATION_CREDENTIALS=/etc/google-cloud-keys/grabbiel-media-key.json"
 ExecStart=/usr/local/bin/media_manager
 WorkingDirectory=/usr/local/bin
 Restart=always

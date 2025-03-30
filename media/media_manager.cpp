@@ -22,6 +22,7 @@
 #define DB_PATH "/var/lib/grabbiel-db/content.db"
 #define TEMP_UPLOAD_DIR "/tmp/grabbiel-uploads"
 
+
 struct Image {
   int id;
   std::string original_url;

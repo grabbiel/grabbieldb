@@ -237,16 +237,16 @@ std::string exec_command(const std::string &cmd) {
 // Upload a file to GCS
 bool upload_to_gcs(const std::string &local_path, const std::string &gcs_path,
                    bool public_access = false) {
-  std::string cmd = "gsutil cp " + local_path + " " + gcs_path;
+  std::string cmd = "sudo gsutil cp " + local_path + " " + gcs_path;
   std::string result = exec_command(cmd);
 
   if (public_access) {
-    cmd = "gsutil acl ch -u AllUsers:R " + gcs_path;
+    cmd = "sudo gsutil acl ch -u AllUsers:R " + gcs_path;
     exec_command(cmd);
   }
 
   // Check if upload was successful
-  cmd = "gsutil stat " + gcs_path + " 2>/dev/null";
+  cmd = "sudo gsutil stat " + gcs_path + " 2>/dev/null";
   result = exec_command(cmd);
 
   return !result.empty();
@@ -630,7 +630,7 @@ handle_delete_image(sqlite3 *db,
 
   // Delete from GCS if it's a GCS path
   if (original_url.find("gs://") == 0) {
-    std::string cmd = "gsutil rm " + original_url;
+    std::string cmd = "sudo gsutil rm " + original_url;
     exec_command(cmd);
   }
 
@@ -682,7 +682,7 @@ handle_delete_video(sqlite3 *db,
 
   // Delete from GCS
   if (!gcs_path.empty()) {
-    std::string cmd = "gsutil rm " + gcs_path;
+    std::string cmd = "sudo gsutil rm " + gcs_path;
     exec_command(cmd);
   }
 

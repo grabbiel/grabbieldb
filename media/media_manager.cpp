@@ -731,7 +731,6 @@ handle_video_upload(sqlite3 *db,
 }
 
 // Handle delete image request
-// Handle delete image request
 std::string
 handle_delete_image(sqlite3 *db,
                     const std::map<std::string, std::string> &params) {
@@ -780,14 +779,21 @@ handle_delete_image(sqlite3 *db,
     // Direct GCS path
     gcs_path = original_url;
   } else if (original_url.find("https://storage.googleapis.com/") == 0) {
-    // Convert https URL to gs:// format
-    std::string bucket_path =
-        original_url.substr(29); // Remove "https://storage.googleapis.com/"
-    size_t first_slash = bucket_path.find('/');
+    // Convert https URL to gs:// format - fixed logic
+    std::string path_after_domain =
+        original_url.substr(strlen("https://storage.googleapis.com/"));
+
+    // Find the bucket name (everything up to the first slash)
+    size_t first_slash = path_after_domain.find('/');
     if (first_slash != std::string::npos) {
-      std::string bucket = bucket_path.substr(0, first_slash);
-      std::string object_path = bucket_path.substr(first_slash + 1);
+      std::string bucket = path_after_domain.substr(0, first_slash);
+      std::string object_path = path_after_domain.substr(first_slash + 1);
       gcs_path = "gs://" + bucket + "/" + object_path;
+      log_to_file("Converted URL to GCS path: " + gcs_path);
+    } else {
+      // No slash found - the path is just the bucket name
+      gcs_path = "gs://" + path_after_domain;
+      log_to_file("Converted URL to GCS path (bucket only): " + gcs_path);
     }
   }
 

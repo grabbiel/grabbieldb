@@ -331,12 +331,16 @@ bool save_file(const std::vector<char> &file_data,
 }
 
 // Execute a shell command and get output
+// Execute a shell command and get output
 std::string exec_command(const std::string &cmd) {
   std::string result;
   char buffer[128];
-  FILE *pipe = popen(cmd.c_str(), "r");
 
+  log_to_file("Executing command: " + cmd);
+
+  FILE *pipe = popen(cmd.c_str(), "r");
   if (!pipe) {
+    log_to_file("Error executing command: popen() failed");
     return "Error executing command";
   }
 
@@ -344,7 +348,14 @@ std::string exec_command(const std::string &cmd) {
     result += buffer;
   }
 
-  pclose(pipe);
+  int status = pclose(pipe);
+  if (status != 0) {
+    log_to_file("Command execution failed with status: " +
+                std::to_string(status));
+  } else {
+    log_to_file("Command executed successfully");
+  }
+
   return result;
 }
 
@@ -720,6 +731,7 @@ handle_video_upload(sqlite3 *db,
 }
 
 // Handle delete image request
+// Handle delete image request
 std::string
 handle_delete_image(sqlite3 *db,
                     const std::map<std::string, std::string> &params) {
@@ -728,44 +740,94 @@ handle_delete_image(sqlite3 *db,
   response << "Location: /\r\n\r\n";
 
   if (params.find("id") == params.end()) {
+    log_to_file("Delete image request missing ID parameter");
     return response.str();
   }
 
   int id = std::stoi(params.at("id"));
+  log_to_file("Handling delete request for image ID: " + std::to_string(id));
 
   // Get image info
   sqlite3_stmt *stmt;
-  const char *sql = "SELECT original_url FROM images WHERE id = ?";
+  const char *sql = "SELECT original_url, filename FROM images WHERE id = ?";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    log_to_file("SQL error preparing statement: " +
+                std::string(sqlite3_errmsg(db)));
     return response.str();
   }
 
   sqlite3_bind_int(stmt, 1, id);
 
   std::string original_url;
+  std::string filename;
   if (sqlite3_step(stmt) == SQLITE_ROW) {
     const char *url = (const char *)sqlite3_column_text(stmt, 0);
     original_url = url ? url : "";
+
+    const char *fname = (const char *)sqlite3_column_text(stmt, 1);
+    filename = fname ? fname : "";
   }
 
   sqlite3_finalize(stmt);
 
-  // Delete from GCS if it's a GCS path
+  log_to_file("Image to delete - URL: " + original_url +
+              ", Filename: " + filename);
+
+  // Handle different URL formats
+  std::string gcs_path;
   if (original_url.find("gs://") == 0) {
-    std::string cmd = "sudo gsutil rm " + original_url;
-    exec_command(cmd);
+    // Direct GCS path
+    gcs_path = original_url;
+  } else if (original_url.find("https://storage.googleapis.com/") == 0) {
+    // Convert https URL to gs:// format
+    std::string bucket_path =
+        original_url.substr(29); // Remove "https://storage.googleapis.com/"
+    size_t first_slash = bucket_path.find('/');
+    if (first_slash != std::string::npos) {
+      std::string bucket = bucket_path.substr(0, first_slash);
+      std::string object_path = bucket_path.substr(first_slash + 1);
+      gcs_path = "gs://" + bucket + "/" + object_path;
+    }
+  }
+
+  // Delete from GCS
+  if (!gcs_path.empty()) {
+    log_to_file("Attempting to delete from GCS: " + gcs_path);
+    std::string cmd = "sudo gsutil rm " + gcs_path + " 2>&1";
+    std::string result = exec_command(cmd);
+    log_to_file("GCS delete result: " + result);
+  } else if (!filename.empty()) {
+    // Try with constructed path as fallback
+    log_to_file("URL format not recognized, trying with constructed path");
+    std::string constructed_path =
+        "gs://grabbiel-media-public/images/originals/" + filename;
+    log_to_file("Attempting to delete from GCS: " + constructed_path);
+    std::string cmd = "sudo gsutil rm " + constructed_path + " 2>&1";
+    std::string result = exec_command(cmd);
+    log_to_file("GCS delete result: " + result);
+  } else {
+    log_to_file("Could not determine GCS path for deletion");
   }
 
   // Delete record
   sql = "DELETE FROM images WHERE id = ?";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+    log_to_file("SQL error preparing delete statement: " +
+                std::string(sqlite3_errmsg(db)));
     return response.str();
   }
 
   sqlite3_bind_int(stmt, 1, id);
-  sqlite3_step(stmt);
+  int result = sqlite3_step(stmt);
+  if (result != SQLITE_DONE) {
+    log_to_file("SQL error executing delete: " +
+                std::string(sqlite3_errmsg(db)));
+  } else {
+    log_to_file("Successfully deleted image record from database");
+  }
+
   sqlite3_finalize(stmt);
 
   return response.str();

@@ -856,6 +856,46 @@ void handle_request(int client_socket, const char *request) {
   send(client_socket, response.c_str(), response.length(), 0);
 }
 
+std::string read_full_http_request(int client_socket) {
+  std::string request_data;
+  char buffer[BUFFER_SIZE];
+  int bytes_read;
+
+  // Step 1: Read headers until we find \r\n\r\n
+  while ((bytes_read = read(client_socket, buffer, sizeof(buffer))) > 0) {
+    request_data.append(buffer, bytes_read);
+    if (request_data.find("\r\n\r\n") != std::string::npos)
+      break;
+  }
+
+  // Step 2: Extract Content-Length
+  size_t header_end = request_data.find("\r\n\r\n");
+  if (header_end == std::string::npos) {
+    return request_data; // Malformed
+  }
+
+  size_t content_length_pos = request_data.find("Content-Length: ");
+  int content_length = 0;
+
+  if (content_length_pos != std::string::npos) {
+    size_t start = content_length_pos + 16;
+    size_t end = request_data.find("\r\n", start);
+    content_length = std::stoi(request_data.substr(start, end - start));
+  }
+
+  // Step 3: Continue reading until full body is received
+  size_t body_received = request_data.size() - (header_end + 4);
+  while (body_received < (size_t)content_length) {
+    bytes_read = read(client_socket, buffer, sizeof(buffer));
+    if (bytes_read <= 0)
+      break;
+    request_data.append(buffer, bytes_read);
+    body_received += bytes_read;
+  }
+
+  return request_data;
+}
+
 int main() {
   // Create directory for temporary uploads
   system(("mkdir -p " + std::string(TEMP_UPLOAD_DIR)).c_str());
@@ -907,32 +947,8 @@ int main() {
 
     memset(buffer, 0, BUFFER_SIZE);
     std::string request_data;
-    int bytes_read = 0;
-    char temp_buffer[BUFFER_SIZE];
-
-    while ((bytes_read = read(new_socket, temp_buffer, BUFFER_SIZE)) > 0) {
-      request_data.append(temp_buffer, bytes_read);
-      if (request_data.find("\r\n\r\n") != std::string::npos) {
-        // Check if we've received full Content-Length yet
-        size_t content_length_pos = request_data.find("Content-Length: ");
-        if (content_length_pos != std::string::npos) {
-          size_t start = content_length_pos + 16;
-          size_t end = request_data.find("\r\n", start);
-          int content_length =
-              std::stoi(request_data.substr(start, end - start));
-
-          size_t header_end = request_data.find("\r\n\r\n") + 4;
-
-          if (request_data.length() - header_end >= (size_t)content_length) {
-            break; // We've got the full body
-          }
-        } else {
-          break; // No body expected
-        }
-      }
-    }
-
-    handle_request(new_socket, request_data.c_str());
+    std::string full_request = read_full_http_request(new_socket);
+    handle_request(new_socket, full_request.c_str());
 
     close(new_socket);
   }

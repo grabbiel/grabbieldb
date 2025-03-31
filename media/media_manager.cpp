@@ -19,7 +19,7 @@
 #include <vector>
 
 #define MEDIA_PORT 8889
-#define BUFFER_SIZE 2097152
+#define BUFFER_SIZE 65536
 #define DB_PATH "/var/lib/grabbiel-db/content.db"
 #define TEMP_UPLOAD_DIR "/tmp/grabbiel-uploads"
 
@@ -84,6 +84,10 @@ parse_multipart_form_data(const std::string &body, const std::string &boundary,
                           std::map<std::string, std::vector<char>> &files) {
   std::map<std::string, std::string> form_data;
   std::string delimiter = "--" + boundary;
+
+  log_to_file("Parsing multipart form data with boundary: " + boundary);
+  log_to_file("Total body size: " + std::to_string(body.size()) + " bytes");
+
   size_t pos = 0;
   size_t next_pos = body.find(delimiter, pos);
 
@@ -92,17 +96,46 @@ parse_multipart_form_data(const std::string &body, const std::string &boundary,
 
     // Check if this is the last boundary marker
     if (body.substr(pos, 2) == "--") {
+      log_to_file("Found final boundary marker");
       break;
+    }
+
+    // Skip the CRLF after the boundary
+    if (body.substr(pos, 2) == "\r\n") {
+      pos += 2;
     }
 
     // Find the end of this part
     next_pos = body.find(delimiter, pos);
+    if (next_pos == std::string::npos) {
+      log_to_file(
+          "Warning: Could not find next boundary, data may be truncated");
+      break;
+    }
+
+    // Extract the part content (including headers)
     std::string part = body.substr(pos, next_pos - pos);
 
-    // Extract headers
+    // Find the end of the headers
     size_t header_end = part.find("\r\n\r\n");
+    if (header_end == std::string::npos) {
+      log_to_file("Warning: Malformed part, no header separator found");
+      continue;
+    }
+
     std::string headers = part.substr(0, header_end);
-    std::string content = part.substr(header_end + 4);
+    // The content starts after the \r\n\r\n and ends with \r\n before the next
+    // boundary
+    std::string content;
+    if (part.size() > header_end + 4) {
+      // Check if the content ends with \r\n
+      if (part.size() >= 2 && part.substr(part.size() - 2) == "\r\n") {
+        content =
+            part.substr(header_end + 4, part.size() - (header_end + 4) - 2);
+      } else {
+        content = part.substr(header_end + 4);
+      }
+    }
 
     // Extract field name and filename if present
     std::string name;
@@ -121,23 +154,30 @@ parse_multipart_form_data(const std::string &body, const std::string &boundary,
           headers.substr(filename_pos + 10, filename_end - (filename_pos + 10));
     }
 
+    log_to_file("Found part name='" + name + "'" +
+                (filename.empty() ? "" : ", filename='" + filename + "'"));
+
     // If we have a filename, this is a file upload
     if (!filename.empty()) {
-      // Remove trailing \r\n from content
-      content = content.substr(0, content.length() - 2);
-
       // Store file data
       std::vector<char> file_data(content.begin(), content.end());
       files[name] = file_data;
 
+      log_to_file("Extracted file '" + filename +
+                  "', size: " + std::to_string(file_data.size()) + " bytes");
+
       // Store the filename
       form_data[name + "_filename"] = filename;
     } else {
-      // Remove trailing \r\n from content
-      content = content.substr(0, content.length() - 2);
       form_data[name] = content;
+      log_to_file("Extracted form field '" + name + "', value: '" + content +
+                  "'");
     }
   }
+
+  log_to_file("Finished parsing multipart form data, found " +
+              std::to_string(files.size()) + " files and " +
+              std::to_string(form_data.size() - files.size()) + " form fields");
 
   return form_data;
 }
@@ -902,38 +942,66 @@ std::string read_full_http_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   int bytes_read;
 
-  // Step 1: Read headers until we find \r\n\r\n
+  log_to_file("Started reading HTTP request");
+
+  // Read headers first
   while ((bytes_read = read(client_socket, buffer, sizeof(buffer))) > 0) {
     request_data.append(buffer, bytes_read);
-    if (request_data.find("\r\n\r\n") != std::string::npos)
+
+    // Check if we have received complete headers
+    size_t header_end = request_data.find("\r\n\r\n");
+    if (header_end != std::string::npos) {
       break;
+    }
   }
 
-  // Step 2: Extract Content-Length
-  size_t header_end = request_data.find("\r\n\r\n");
-  if (header_end == std::string::npos) {
-    return request_data; // Malformed
+  if (bytes_read <= 0) {
+    log_to_file("Error reading request headers");
+    return request_data; // Error or connection closed
   }
 
-  size_t content_length_pos = request_data.find("Content-Length: ");
+  // Parse Content-Length
   int content_length = 0;
-
-  if (content_length_pos != std::string::npos) {
-    size_t start = content_length_pos + 16;
-    size_t end = request_data.find("\r\n", start);
-    content_length = std::stoi(request_data.substr(start, end - start));
+  size_t pos = request_data.find("Content-Length:");
+  if (pos != std::string::npos) {
+    std::string cl_str = request_data.substr(pos + 15);
+    pos = cl_str.find_first_of("\r\n");
+    if (pos != std::string::npos) {
+      cl_str = cl_str.substr(0, pos);
+    }
+    // Trim leading whitespace
+    cl_str.erase(0, cl_str.find_first_not_of(" \t"));
+    content_length = std::stoi(cl_str);
+    log_to_file("Content-Length detected: " + std::to_string(content_length) +
+                " bytes");
   }
 
-  // Step 3: Continue reading until full body is received
+  // Calculate how much body data we've already read
+  size_t header_end = request_data.find("\r\n\r\n");
   size_t body_received = request_data.size() - (header_end + 4);
+  log_to_file("Already received " + std::to_string(body_received) +
+              " bytes of body data");
+
+  // Read the rest of the body
   while (body_received < (size_t)content_length) {
     bytes_read = read(client_socket, buffer, sizeof(buffer));
-    if (bytes_read <= 0)
-      break;
-    request_data.append(buffer, bytes_read);
-    body_received += bytes_read;
+    if (bytes_read > 0) {
+      request_data.append(buffer, bytes_read);
+      body_received += bytes_read;
+      log_to_file("Read " + std::to_string(bytes_read) +
+                  " more bytes, total body: " + std::to_string(body_received) +
+                  "/" + std::to_string(content_length));
+    } else if (bytes_read == 0) {
+      log_to_file("Connection closed before receiving complete body");
+      break; // Connection closed
+    } else {
+      log_to_file("Error reading request body: " + std::to_string(errno));
+      break; // Error
+    }
   }
 
+  log_to_file("Finished reading HTTP request, total size: " +
+              std::to_string(request_data.size()) + " bytes");
   return request_data;
 }
 

@@ -84,37 +84,72 @@ parse_multipart_form_data(const std::string &body, const std::string &boundary,
                           std::map<std::string, std::vector<char>> &files) {
   std::map<std::string, std::string> form_data;
   std::string delimiter = "--" + boundary;
+  std::string final_delimiter = delimiter + "--";
 
-  log_to_file("Parsing multipart form data with boundary: " + boundary);
+  log_to_file("Parsing multipart form data with boundary: '" + boundary + "'");
   log_to_file("Total body size: " + std::to_string(body.size()) + " bytes");
 
-  size_t pos = 0;
-  size_t next_pos = body.find(delimiter, pos);
+  // Debug: Log first 50 bytes of body as hex
+  std::stringstream hex_dump;
+  for (size_t i = 0; i < std::min(body.size(), size_t(50)); i++) {
+    hex_dump << std::hex << std::setw(2) << std::setfill('0')
+             << (int)(unsigned char)body[i] << " ";
+  }
+  log_to_file("First 50 bytes of body as hex: " + hex_dump.str());
 
-  while (next_pos != std::string::npos) {
-    pos = next_pos + delimiter.length();
+  // Try to find first boundary
+  size_t pos = body.find(delimiter);
+  if (pos == std::string::npos) {
+    log_to_file("ERROR: Could not find initial boundary in body!");
+    return form_data;
+  }
 
-    // Check if this is the last boundary marker
-    if (body.substr(pos, 2) == "--") {
+  log_to_file("First boundary found at position: " + std::to_string(pos));
+
+  while (pos != std::string::npos) {
+    // Move position past delimiter
+    pos += delimiter.length();
+
+    // Check if this is the final delimiter
+    if (pos + 2 <= body.size() && body.substr(pos, 2) == "--") {
       log_to_file("Found final boundary marker");
       break;
     }
 
-    // Skip the CRLF after the boundary
-    if (body.substr(pos, 2) == "\r\n") {
+    // Skip CRLF after delimiter if present
+    if (pos + 2 <= body.size() && body.substr(pos, 2) == "\r\n") {
       pos += 2;
+    } else {
+      log_to_file("Warning: No CRLF after boundary at position " +
+                  std::to_string(pos));
     }
 
-    // Find the end of this part
-    next_pos = body.find(delimiter, pos);
+    // Find next boundary
+    size_t next_pos = body.find(delimiter, pos);
     if (next_pos == std::string::npos) {
       log_to_file(
           "Warning: Could not find next boundary, data may be truncated");
+      // Try to find the final delimiter instead
+      next_pos = body.find(final_delimiter, pos);
+      if (next_pos == std::string::npos) {
+        log_to_file("ERROR: Could not find final boundary either");
+        break;
+      } else {
+        log_to_file("Found final delimiter at position: " +
+                    std::to_string(next_pos));
+      }
+    }
+
+    // Check if we have enough data to process
+    if (next_pos <= pos) {
+      log_to_file("ERROR: Invalid boundary positions, next_pos <= pos");
       break;
     }
 
     // Extract the part content (including headers)
     std::string part = body.substr(pos, next_pos - pos);
+    log_to_file("Extracted part size: " + std::to_string(part.size()) +
+                " bytes");
 
     // Find the end of the headers
     size_t header_end = part.find("\r\n\r\n");
@@ -124,11 +159,13 @@ parse_multipart_form_data(const std::string &body, const std::string &boundary,
     }
 
     std::string headers = part.substr(0, header_end);
+    log_to_file("Headers size: " + std::to_string(headers.size()) + " bytes");
+
     // The content starts after the \r\n\r\n and ends with \r\n before the next
     // boundary
     std::string content;
     if (part.size() > header_end + 4) {
-      // Check if the content ends with \r\n
+      // Most parts end with \r\n, but not all - handle both cases
       if (part.size() >= 2 && part.substr(part.size() - 2) == "\r\n") {
         content =
             part.substr(header_end + 4, part.size() - (header_end + 4) - 2);
@@ -136,6 +173,8 @@ parse_multipart_form_data(const std::string &body, const std::string &boundary,
         content = part.substr(header_end + 4);
       }
     }
+
+    log_to_file("Content size: " + std::to_string(content.size()) + " bytes");
 
     // Extract field name and filename if present
     std::string name;
@@ -173,6 +212,9 @@ parse_multipart_form_data(const std::string &body, const std::string &boundary,
       log_to_file("Extracted form field '" + name + "', value: '" + content +
                   "'");
     }
+
+    // Move to next boundary
+    pos = next_pos;
   }
 
   log_to_file("Finished parsing multipart form data, found " +
@@ -816,6 +858,8 @@ bool parse_content_type(const std::string &header, std::string &content_type,
   size_t end = header.find("\r\n", start);
   std::string content_type_line = header.substr(start, end - start);
 
+  log_to_file("Content-Type header: " + content_type_line);
+
   pos = content_type_line.find(';');
   if (pos == std::string::npos) {
     content_type = content_type_line;
@@ -831,16 +875,31 @@ bool parse_content_type(const std::string &header, std::string &content_type,
 
   boundary = content_type_line.substr(pos + 9);
 
-  // Remove quotes if present
-  if (boundary.front() == '"' && boundary.back() == '"') {
-    boundary = boundary.substr(1, boundary.length() - 2);
+  // Remove quotes if present (handle both single and double quotes)
+  if (!boundary.empty()) {
+    if (boundary.front() == '"' && boundary.back() == '"') {
+      boundary = boundary.substr(1, boundary.length() - 2);
+    } else if (boundary.front() == '\'' && boundary.back() == '\'') {
+      boundary = boundary.substr(1, boundary.length() - 2);
+    }
   }
 
+  // Also trim any whitespace
+  if (!boundary.empty()) {
+    size_t first = boundary.find_first_not_of(" \t");
+    size_t last = boundary.find_last_not_of(" \t");
+    if (first != std::string::npos && last != std::string::npos) {
+      boundary = boundary.substr(first, last - first + 1);
+    }
+  }
+
+  log_to_file("Parsed boundary: '" + boundary + "'");
   return true;
 }
 
 // Main request handler
-void handle_request(int client_socket, const char *request) {
+void handle_request(int client_socket, const char *request,
+                    size_t request_size) {
   // Open database connection
   sqlite3 *db;
   int rc = sqlite3_open(DB_PATH, &db);
@@ -855,7 +914,9 @@ void handle_request(int client_socket, const char *request) {
   }
 
   // Parse request
-  std::string req(request);
+  std::string req(request, request_size);
+  log_to_file("Full request size in handle_request: " +
+              std::to_string(request_size) + " bytes");
   std::string method, path;
 
   // Extract method and path
@@ -882,7 +943,11 @@ void handle_request(int client_socket, const char *request) {
   size_t body_pos = req.find("\r\n\r\n");
   std::string body;
   if (body_pos != std::string::npos) {
-    body = req.substr(body_pos + 4);
+    // Calculate the actual body size based on remaining data
+    size_t body_size = req.size() - (body_pos + 4);
+    body = req.substr(body_pos + 4, body_size);
+    log_to_file("Extracted body from request: " + std::to_string(body.size()) +
+                " bytes");
   }
 
   // Parse headers
@@ -907,12 +972,23 @@ void handle_request(int client_socket, const char *request) {
       response += "404 - Page not found";
     }
   } else if (method == "POST") {
+    log_to_file("Handling POST request to: " + base_path);
+    log_to_file("Content-Type: " + content_type + ", Boundary: " + boundary);
+
     if (base_path == "/upload-image" && content_type == "multipart/form-data" &&
         !boundary.empty()) {
       // Parse form data and handle image upload
       std::map<std::string, std::vector<char>> files;
+
+      log_to_file("About to parse multipart form data, body size: " +
+                  std::to_string(body.size()));
+
       std::map<std::string, std::string> form_data =
           parse_multipart_form_data(body, boundary, files);
+
+      log_to_file("After parsing, found " + std::to_string(files.size()) +
+                  " files");
+
       response = handle_image_upload(db, form_data, files);
     } else if (base_path == "/upload-video" &&
                content_type == "multipart/form-data" && !boundary.empty()) {
@@ -946,7 +1022,7 @@ std::string read_full_http_request(int client_socket) {
 
   // Read headers first
   while ((bytes_read = read(client_socket, buffer, sizeof(buffer))) > 0) {
-    request_data.append(buffer, bytes_read);
+    request_data.insert(request_data.end(), buffer, buffer + bytes_read);
 
     // Check if we have received complete headers
     size_t header_end = request_data.find("\r\n\r\n");
@@ -1059,7 +1135,7 @@ int main() {
     memset(buffer, 0, BUFFER_SIZE);
     std::string request_data;
     std::string full_request = read_full_http_request(new_socket);
-    handle_request(new_socket, full_request.c_str());
+    handle_request(new_socket, full_request.c_str(), full_request.size());
 
     close(new_socket);
   }

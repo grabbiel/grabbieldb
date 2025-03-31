@@ -906,12 +906,33 @@ int main() {
     }
 
     memset(buffer, 0, BUFFER_SIZE);
-    int bytes_read = read(new_socket, buffer, BUFFER_SIZE);
+    std::string request_data;
+    int bytes_read = 0;
+    char temp_buffer[BUFFER_SIZE];
 
-    if (bytes_read > 0) {
-      buffer[bytes_read] = '\0';
-      handle_request(new_socket, buffer);
+    while ((bytes_read = read(new_socket, temp_buffer, BUFFER_SIZE)) > 0) {
+      request_data.append(temp_buffer, bytes_read);
+      if (request_data.find("\r\n\r\n") != std::string::npos) {
+        // Check if we've received full Content-Length yet
+        size_t content_length_pos = request_data.find("Content-Length: ");
+        if (content_length_pos != std::string::npos) {
+          size_t start = content_length_pos + 16;
+          size_t end = request_data.find("\r\n", start);
+          int content_length =
+              std::stoi(request_data.substr(start, end - start));
+
+          size_t header_end = request_data.find("\r\n\r\n") + 4;
+
+          if (request_data.length() - header_end >= (size_t)content_length) {
+            break; // We've got the full body
+          }
+        } else {
+          break; // No body expected
+        }
+      }
     }
+
+    handle_request(new_socket, request_data.c_str());
 
     close(new_socket);
   }

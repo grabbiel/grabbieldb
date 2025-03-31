@@ -18,7 +18,7 @@
 #include <vector>
 
 #define MEDIA_PORT 8889
-#define BUFFER_SIZE 16384
+#define BUFFER_SIZE 2097152
 #define DB_PATH "/var/lib/grabbiel-db/content.db"
 #define TEMP_UPLOAD_DIR "/tmp/grabbiel-uploads"
 
@@ -45,6 +45,37 @@ struct Video {
   int content_id;
   std::string processing_status;
 };
+
+void log_to_file(const std::string &message) {
+  std::ofstream log_file("/tmp/grabbiel-debug.log", std::ios::app);
+  if (log_file) {
+    log_file << "[" << time(NULL) << "] " << message << std::endl;
+    log_file.close();
+  }
+}
+
+void log_file_content(const std::string &filepath, size_t max_bytes = 100) {
+  std::ifstream file(filepath, std::ios::binary);
+  if (!file) {
+    log_to_file("Failed to open file for debugging: " + filepath);
+    return;
+  }
+
+  std::vector<char> buffer(max_bytes);
+  file.read(buffer.data(), max_bytes);
+  size_t bytes_read = file.gcount();
+
+  std::stringstream hex_dump;
+  for (size_t i = 0; i < bytes_read; i++) {
+    hex_dump << std::hex << std::setw(2) << std::setfill('0')
+             << (int)(unsigned char)buffer[i] << " ";
+    if ((i + 1) % 16 == 0)
+      hex_dump << "\n";
+  }
+
+  log_to_file("File preview for " + filepath + " (" +
+              std::to_string(bytes_read) + " bytes):\n" + hex_dump.str());
+}
 
 // Utility function to parse multipart form data
 std::map<std::string, std::string>
@@ -487,6 +518,10 @@ handle_image_upload(sqlite3 *db,
   // Get form data
   const std::vector<char> &file_data = files.at("image");
   std::string filename = form_data.at("image_filename");
+
+  log_to_file("Handling image upload: " + filename +
+              ", size: " + std::to_string(file_data.size()) + " bytes");
+
   std::string image_type = form_data.find("image_type") != form_data.end()
                                ? form_data.at("image_type")
                                : "content";
@@ -508,9 +543,14 @@ handle_image_upload(sqlite3 *db,
   std::string gcs_path = bucket + "/images/originals/" + filename;
   std::string local_path = std::string(TEMP_UPLOAD_DIR) + "/" + filename;
 
-  // Upload to GCS
-  bool success = upload_to_gcs(local_path, gcs_path, storage_type == "public");
+  log_to_file("File saved to: " + local_path);
+  log_file_content(local_path);
 
+  // Upload to GCS
+  log_to_file("Attempting to upload to GCS: " + gcs_path);
+  bool success = upload_to_gcs(local_path, gcs_path, storage_type == "public");
+  log_to_file(std::string("GCS upload result: ") +
+              (success ? "success" : "failure"));
   if (success) {
     // Get image dimensions (would require image processing library)
     // For now, we'll use placeholder values
@@ -895,6 +935,8 @@ std::string read_full_http_request(int client_socket) {
 
   return request_data;
 }
+
+// Add these functions for better debugging
 
 int main() {
   // Create directory for temporary uploads

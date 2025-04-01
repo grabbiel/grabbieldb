@@ -22,8 +22,12 @@ current_version=$(sqlite3 "$DB_PATH" "SELECT IFNULL(MAX(version), 0) FROM schema
 
 # Apply new migrations
 for migration in "$MIGRATIONS_DIR"/*.sql; do
-  version=$(basename "$migration" | cut -d'_' -f1)
-  if [ "$version" -gt "$current_version" ]; then
+  [ -e "$migration" ] || continue # Skip if no SQL files exist
+
+  filename=$(basename "$migration")
+  version="${filename%%_*}" # Extract numeric prefix
+
+  if [[ "$version" =~ ^[0-9]+$ ]] && [ "$version" -gt "$current_version" ]; then
     echo "Applying migration $migration..."
 
     # Backup before applying

@@ -19,6 +19,19 @@ fi
 
 # Get current schema version
 current_version=$(sqlite3 "$DB_PATH" "SELECT IFNULL(MAX(version), 0) FROM schema_versions;")
+echo "Current schema version: $current_version"
+
+# Optional dry run
+if [ "$1" = "--dry-run" ]; then
+  echo "Dry run - would apply these migrations:"
+  for migration in "$MIGRATIONS_DIR"/*.sql; do
+    version=$(basename "$migration" | cut -d'_' -f1)
+    if [[ "$version" =~ ^[0-9]+$ ]] && [ "$version" -gt "$current_version" ]; then
+      echo "- $(basename "$migration")"
+    fi
+  done
+  exit 0
+fi
 
 # Apply new migrations
 for migration in "$MIGRATIONS_DIR"/*.sql; do
@@ -28,31 +41,22 @@ for migration in "$MIGRATIONS_DIR"/*.sql; do
   version="${filename%%_*}" # Extract numeric prefix
 
   if [[ "$version" =~ ^[0-9]+$ ]] && [ "$version" -gt "$current_version" ]; then
-    echo "Applying migration $migration..."
+    echo "Applying migration $filename..."
 
     # Backup before applying
     timestamp=$(date +%Y%m%d_%H%M%S)
-    sqlite3 "$DB_PATH" ".backup /var/backups/grabbiel-db/pre_migration_${version}_${timestamp}.db"
+    backup_path="/var/backups/grabbiel-db/pre_migration_${version}_${timestamp}.db"
+    echo "Backing up DB to $backup_path"
+    sqlite3 "$DB_PATH" ".backup $backup_path"
 
-    # Apply migration SQL
-    sqlite3 "$DB_PATH" ".read $migration"
-
-    # Record version
-    description=$(basename "$migration" | cut -d'_' -f2- | sed 's/.sql$//')
-    sqlite3 "$DB_PATH" "INSERT INTO schema_versions (version, description) VALUES ($version, '$description');"
-
-    echo "Migration $version completed"
+    # Apply migration
+    if sqlite3 "$DB_PATH" <"$migration"; then
+      description=$(basename "$migration" | cut -d'_' -f2- | sed 's/.sql$//')
+      sqlite3 "$DB_PATH" "INSERT INTO schema_versions (version, description) VALUES ($version, '$description');"
+      echo "Migration $version completed"
+    else
+      echo "Migration $version failed! Aborting."
+      exit 1
+    fi
   fi
 done
-
-# Optional dry run
-if [ "$1" = "--dry-run" ]; then
-  echo "Dry run - would apply these migrations:"
-  for migration in "$MIGRATIONS_DIR"/*.sql; do
-    version=$(basename "$migration" | cut -d'_' -f1)
-    if [ "$version" -gt "$current_version" ]; then
-      echo "- $migration"
-    fi
-  done
-  exit 0
-fi

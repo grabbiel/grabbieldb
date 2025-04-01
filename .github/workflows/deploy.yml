@@ -49,7 +49,7 @@ jobs:
         # Copy schema and scripts
         scp -i ~/.ssh/id_rsa schema/init_db.sql $VM_USER@$VM_IP:/etc/grabbiel/db-scripts/
         scp -i ~/.ssh/id_rsa scripts/* $VM_USER@$VM_IP:/etc/grabbiel/db-scripts/
-        scp -i ~/.ssh/id_rsa -r migrations $VM_USER@$VM_IP:/etc/grabbiel/db-scripts
+        scp -i ~/.ssh/id_rsa -r migrations $VM_USER@$VM_IP:/etc/grabbiel/db-scripts/
         
         # Update scripts and handle database appropriately
         ssh -i ~/.ssh/id_rsa $VM_USER@$VM_IP '

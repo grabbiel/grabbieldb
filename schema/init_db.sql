@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS content_metadata (
     FOREIGN KEY(content_id) REFERENCES content_blocks(id) ON DELETE CASCADE,
     PRIMARY KEY(content_id, key)
 );
+
 -- Content files (tracks all files associated with a content block)
 CREATE TABLE IF NOT EXISTS content_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

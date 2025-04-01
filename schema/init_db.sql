@@ -126,7 +126,6 @@ CREATE TABLE IF NOT EXISTS schema_versions (
 INSERT OR IGNORE INTO schema_versions (version, description)
 VALUES(1, 'Initial schema');
 
-
 -- Subsite registry
 CREATE TABLE IF NOT EXISTS sites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

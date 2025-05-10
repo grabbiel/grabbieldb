@@ -4,7 +4,6 @@
 sudo mkdir -p /tmp/grabbiel-uploads
 sudo mkdir -p /usr/local/bin
 
-# Compile the media manager
 g++ -std=c++17 -o media_manager media_manager.cpp -lsqlite3
 
 # Create systemd service file

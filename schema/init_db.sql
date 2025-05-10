@@ -161,3 +161,5 @@ CREATE TABLE IF NOT EXISTS content_tags (
     tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
     PRIMARY KEY (content_id, tag_id)
 );
+
+

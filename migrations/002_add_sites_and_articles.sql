@@ -1,6 +1,3 @@
--- 001_add_sites_and_articles.sql
-
--- Create subsite registry
 CREATE TABLE IF NOT EXISTS sites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     slug TEXT UNIQUE NOT NULL,
@@ -9,10 +6,6 @@ CREATE TABLE IF NOT EXISTS sites (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     theme_config JSON
 );
-
--- Add site_id to content_blocks (if not exists)
--- SQLite does not support IF NOT EXISTS for ALTER TABLE ADD COLUMN directly
--- So this step must be done conditionally in Bash (see below)
 
 -- Rich text article storage
 CREATE TABLE IF NOT EXISTS articles (

@@ -127,39 +127,6 @@ CREATE TABLE IF NOT EXISTS schema_versions (
 INSERT OR IGNORE INTO schema_versions (version, description)
 VALUES(1, 'Initial schema');
 
--- Subsite registry
-CREATE TABLE IF NOT EXISTS sites (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    slug TEXT UNIQUE NOT NULL,       -- e.g. 'leetcode', 'food'
-    title TEXT NOT NULL,             -- Display name for subsite
-    description TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    theme_config JSON                -- Optional styling/theming info
-);
-
 -- Link content_blocks to subsites
 ALTER TABLE content_blocks ADD COLUMN site_id INTEGER REFERENCES sites(id);
-
--- Rich text article table (optional)
-CREATE TABLE IF NOT EXISTS articles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    content_id INTEGER NOT NULL REFERENCES content_blocks(id) ON DELETE CASCADE,
-    body_markdown TEXT NOT NULL,
-    summary TEXT,
-    author TEXT,
-    published_at DATETIME,
-    last_edited DATETIME
-);
-
--- Optional tag support
-CREATE TABLE IF NOT EXISTS tags (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL
-);
-CREATE TABLE IF NOT EXISTS content_tags (
-    content_id INTEGER REFERENCES content_blocks(id) ON DELETE CASCADE,
-    tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (content_id, tag_id)
-);
-
 

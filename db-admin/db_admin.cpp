@@ -122,20 +122,16 @@ std::string generate_main_page(sqlite3 *db) {
   std::stringstream html;
   std::vector<std::string> tables = get_tables(db);
 
-  html << "<!DOCTYPE html>"
-       << "<html><head><title>SQLite Admin</title>"
-       << "<style>"
-       << "body { font-family: Arial, sans-serif; margin: 20px; }"
+  html << "<!DOCTYPE html>" << "<html><head><title>SQLite Admin</title>"
+       << "<style>" << "body { font-family: Arial, sans-serif; margin: 20px; }"
        << "table { border-collapse: collapse; width: 100%; margin-top: 20px; }"
        << "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }"
        << "th { background-color: #f2f2f2; }"
        << "tr:hover { background-color: #f5f5f5; }"
        << ".menu { display: flex; background-color: #333; padding: 10px; }"
        << ".menu a { color: white; padding: 10px; text-decoration: none; }"
-       << ".menu a:hover { background-color: #555; }"
-       << "</style></head><body>"
-       << "<h1>SQLite Database Admin</h1>"
-       << "<div class='menu'>"
+       << ".menu a:hover { background-color: #555; }" << "</style></head><body>"
+       << "<h1>SQLite Database Admin</h1>" << "<div class='menu'>"
        << "<a href='/'>Tables</a>";
 
   for (const auto &table : tables) {
@@ -163,9 +159,8 @@ std::string generate_table_view(sqlite3 *db, const std::string &table_name) {
 
   std::vector<std::string> tables = get_tables(db);
 
-  html << "<!DOCTYPE html>"
-       << "<html><head><title>Table: " << table_name << "</title>"
-       << "<style>"
+  html << "<!DOCTYPE html>" << "<html><head><title>Table: " << table_name
+       << "</title>" << "<style>"
        << "body { font-family: Arial, sans-serif; margin: 20px; }"
        << "table { border-collapse: collapse; width: 100%; margin-top: 20px; }"
        << "th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }"
@@ -178,30 +173,36 @@ std::string generate_table_view(sqlite3 *db, const std::string &table_name) {
        << "button { padding: 10px; background-color: #4CAF50; color: white; "
           "border: none; cursor: pointer; }"
        << "button:hover { background-color: #45a049; }"
-       << "</style></head><body>"
-       << "<h1>SQLite Database Admin</h1>"
-       << "<div class='menu'>"
-       << "<a href='/'>Tables</a>";
+       << "</style></head><body>" << "<h1>SQLite Database Admin</h1>"
+       << "<div class='menu'>" << "<a href='/'>Tables</a>";
 
   for (const auto &table : tables) {
     html << "<a href='/table?name=" << table << "'>" << table << "</a>";
   }
 
-  html << "</div>"
-       << "<h2>Table: " << table_name << "</h2>"
+  html << "</div>" << "<h2>Table: " << table_name << "</h2>"
        << "<div class='actions'>"
        << "<button onclick=\"location.href='/insert?table=" << table_name
        << "'\">Add New Record</button>"
        << "<button onclick=\"location.href='/export?table=" << table_name
-       << "'\">Export CSV</button>"
-       << "</div>"
-       << "<table><tr>";
+       << "'\">Export CSV</button>" << "</div>" << "<table><tr>";
+
+  bool has_id_column = false;
+  for (const auto &column : columns) {
+    if (column.name == "id") {
+      has_id_column = true;
+      break;
+    }
+  }
 
   // Table headers
   for (const auto &column : columns) {
     html << "<th>" << column.name << " (" << column.type << ")</th>";
   }
-  html << "<th>Actions</th></tr>";
+  if (has_id_column) {
+    html << "<th>Actions</th>";
+  }
+  html << "</tr>";
 
   // Table data
   for (const auto &record : records) {
@@ -212,12 +213,14 @@ std::string generate_table_view(sqlite3 *db, const std::string &table_name) {
     }
 
     // Add action buttons for each row
-    html << "<td>"
-         << "<a href='/edit?table=" << table_name << "&id=" << record.at("id")
-         << "'>Edit</a> | "
-         << "<a href='/delete?table=" << table_name << "&id=" << record.at("id")
-         << "' onclick='return confirm(\"Are you sure?\")'>Delete</a>"
-         << "</td>";
+    if (has_id_column) {
+      html << "<td>" << "<a href='/edit?table=" << table_name
+           << "&id=" << record.at("id") << "'>Edit</a> | "
+           << "<a href='/delete?table=" << table_name
+           << "&id=" << record.at("id")
+           << "' onclick='return confirm(\"Are you sure?\")'>Delete</a>"
+           << "</td>";
+    }
 
     html << "</tr>";
   }

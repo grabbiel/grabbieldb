@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS sochee (
  comments INTEGER DEFAULT 0,
  likes INTEGER DEFAULT 0,
  caption TEXT NOT NULL, 
- hashtag INTEGER NOT NULL
+ hashtag INTEGER NOT NULL,
  location TEXT NOT NULL DEFAULT '',
  has_link BOOLEAN NOT NULL
 );
